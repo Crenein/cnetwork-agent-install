@@ -82,6 +82,9 @@ services:
     ports:
       - "8000:8000"
     restart: always
+    depends_on:
+      - influxdb
+      - mongodb
     env_file:
       - .env
 

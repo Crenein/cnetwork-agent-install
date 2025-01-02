@@ -77,7 +77,7 @@ services:
       - mongo-data:/data/db
 
   cnetwork-agent:
-    image: crenein/c-network-agent:0.4.9
+    image: crenein/c-network-agent:0.5.0
     container_name: cnetwork-agent
     ports:
       - "8000:8000"

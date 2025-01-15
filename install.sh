@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Verificar si se está ejecutando como root
+if [ "$EUID" -ne 0 ]; then 
+    echo "Este script debe ejecutarse como root"
+    exit 1
+fi
+
 # Actualizar el sistema
 apt-get update -y
 
@@ -39,11 +45,10 @@ chown -R 1000:1000 /data/influxdb2
 chown -R 1000:1000 /data/mongodb
 
 # Crear el archivo .env
-cat <<EOL > .env
-INFLUX_TOKEN=--n59y0@7iY2S3:`y"A8=<!j,,
+cat > .env << 'EOL'
+INFLUX_TOKEN="--n59y0@7iY2S3:y\"A8=<!j,,"
 INFLUX_BUCKET=fping
 INFLUX_URL="http://influxdb:8086"
-
 SECRET_KEY="09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
 ALGORITHM="HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES=30
@@ -55,9 +60,8 @@ FERNET_KEY='y1TpxOK9wYrdMT0ti9pK2NTuhw0DlrOGYrpTsl26f70='
 EOL
 
 # Crear el archivo docker-compose.yml
-cat <<EOL > docker-compose.yml
+cat > docker-compose.yml << 'EOL'
 version: '3.8'
-
 services:
   influxdb:
     image: influxdb:2.0
@@ -71,7 +75,7 @@ services:
       - DOCKER_INFLUXDB_INIT_PASSWORD=CreneinLocal
       - DOCKER_INFLUXDB_INIT_ORG=crenein
       - DOCKER_INFLUXDB_INIT_BUCKET=fping
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=--n59y0@7iY2S3:`y"A8=<!j,,
+      - "DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=--n59y0@7iY2S3:y\"A8=<!j,,"
     networks:
       - app-network
 
@@ -107,11 +111,18 @@ networks:
     driver: bridge
 EOL
 
-# Levantar los servicios con Docker Compose
+# Asegurarse de que Docker esté iniciado
+systemctl start docker
+
+# Esperar a que Docker esté completamente iniciado
+sleep 5
+
+# Crear y arrancar los contenedores
 docker-compose up -d
 
-# Ejecutar el comando en el contenedor cnetwork-agent
-docker exec -it cnetwork-agent python3 populate_db.py
+# Esperar a que los contenedores estén listos
+echo "Esperando a que los servicios estén listos..."
+sleep 20
 
-# Ejecutar populate_db.py
+# Ejecutar el comando en el contenedor cnetwork-agent
 docker exec cnetwork-agent python3 populate_db.py

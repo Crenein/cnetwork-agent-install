@@ -20,30 +20,29 @@ echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian \
   $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-# Actualizar el sistema nuevamente
+# Actualizar e instalar Docker
 apt-get update -y
-
-# Instalar Docker
 apt-get install -y docker-ce docker-ce-cli containerd.io
 
 # Instalar Docker Compose
 curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 
-# Crear directorios para volúmenes persistentes
+# Crear directorios
 mkdir -p /data/influxdb2
 mkdir -p /data/mongodb
-
-# Establecer permisos
 chown -R 1000:1000 /data/influxdb2
 chown -R 1000:1000 /data/mongodb
 
-# Crear el archivo .env
-cat <<EOL > .env
-INFLUX_TOKEN=--n59y0@7iY2S3:`y"A8=<!j,,
+# Crear directorio de trabajo
+mkdir -p /opt/cnetwork-agent
+cd /opt/cnetwork-agent
+
+# Crear el archivo .env con comillas escapadas
+cat << 'EOL' > .env
+INFLUX_TOKEN="--n59y0@7iY2S3:\`y\"A8=<!j,,"
 INFLUX_BUCKET=fping
 INFLUX_URL="http://influxdb:8086"
-
 SECRET_KEY="09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
 ALGORITHM="HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES=30
@@ -55,7 +54,7 @@ FERNET_KEY='y1TpxOK9wYrdMT0ti9pK2NTuhw0DlrOGYrpTsl26f70='
 EOL
 
 # Crear el archivo docker-compose.yml
-cat <<EOL > docker-compose.yml
+cat << 'EOL' > docker-compose.yml
 version: '3.8'
 
 services:
@@ -107,8 +106,15 @@ networks:
     driver: bridge
 EOL
 
-# Levantar los servicios con Docker Compose
+# Levantar los servicios
+cd /opt/cnetwork-agent
 docker-compose up -d
+
+# Esperar a que los contenedores estén listos
+sleep 30
+
+# Ejecutar el comando de población
+docker exec -it cnetwork-agent python3 populate_db.py
 
 # Ejecutar el comando en el contenedor cnetwork-agent
 docker exec -it cnetwork-agent python3 populate_db.py

@@ -1,11 +1,5 @@
 #!/bin/bash
 
-# Verificar si se está ejecutando como root
-if [ "$EUID" -ne 0 ]; then 
-    echo "Este script debe ejecutarse como root"
-    exit 1
-fi
-
 # Actualizar el sistema
 apt-get update -y
 

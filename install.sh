@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Actualizar el sistema
-sudo apt-get update -y
+apt-get update -y
 
 # Instalar paquetes necesarios
-sudo apt-get install -y \
+apt-get install -y \
     apt-transport-https \
     ca-certificates \
     curl \
@@ -13,30 +13,30 @@ sudo apt-get install -y \
     fping
 
 # Añadir la clave GPG oficial de Docker
-curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
 
 # Añadir el repositorio de Docker
 echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian \
-  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 # Actualizar el sistema nuevamente
-sudo apt-get update -y
+apt-get update -y
 
 # Instalar Docker
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+apt-get install -y docker-ce docker-ce-cli containerd.io
 
 # Instalar Docker Compose
-sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
+curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
 
 # Crear directorios para volúmenes persistentes
-sudo mkdir -p /data/influxdb2
-sudo mkdir -p /data/mongodb
+mkdir -p /data/influxdb2
+mkdir -p /data/mongodb
 
 # Establecer permisos
-sudo chown -R 1000:1000 /data/influxdb2
-sudo chown -R 1000:1000 /data/mongodb
+chown -R 1000:1000 /data/influxdb2
+chown -R 1000:1000 /data/mongodb
 
 # Crear el archivo .env
 cat <<EOL > .env
@@ -108,7 +108,7 @@ networks:
 EOL
 
 # Levantar los servicios con Docker Compose
-sudo docker-compose up -d
+docker-compose up -d
 
 # Ejecutar el comando en el contenedor cnetwork-agent
 docker exec -it cnetwork-agent python3 populate_db.py

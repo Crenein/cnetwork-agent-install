@@ -61,6 +61,7 @@ services:
     image: influxdb:2.0
     ports:
       - "8086:8086"
+    restart: always
     volumes:
       - /data/influxdb2:/var/lib/influxdb2
     environment:
@@ -78,6 +79,7 @@ services:
     container_name: mongodb
     ports:
       - "27017:27017"
+    restart: always
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: root

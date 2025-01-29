@@ -33,10 +33,12 @@ chmod +x /usr/local/bin/docker-compose
 # Crear directorios para volúmenes persistentes
 mkdir -p /data/influxdb2
 mkdir -p /data/mongodb
+mkdir -p /data/files
 
 # Establecer permisos
 chown -R 1000:1000 /data/influxdb2
 chown -R 1000:1000 /data/mongodb
+chown -R 1000:1000 /data/files
 
 # Crear el archivo .env
 cat > .env << 'EOL'
@@ -89,13 +91,15 @@ services:
       - app-network
 
   cnetwork-agent:
-    image: crenein/c-network-agent:0.6.9
+    image: crenein/c-network-agent:0.7.4
     container_name: cnetwork-agent
     ports:
       - "8000:8000"
     restart: always
     env_file:
       - .env
+    volumes:
+      - /data/files:/app/files
     networks:
       - app-network
     depends_on:

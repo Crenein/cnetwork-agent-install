@@ -53,6 +53,11 @@ DB_NAME=mongo-agent
 DB_URL=mongodb://root:root@mongodb:27017/?authSource=admin&tls=false
 KEY_ENCRYPT=b'y1TpxOK9wYrdMT0ti9pK2NTuhw0DlrOGYrpTsl26f70='
 FERNET_KEY='y1TpxOK9wYrdMT0ti9pK2NTuhw0DlrOGYrpTsl26f70='
+DO_ACCESS_KEY_ID="DO00C4GLBMRPWY6JAA73"
+DO_SECRET_ACCESS_KEY="YEUXdlZO4GgN7JrlLh8Avst+bwl5pFALD+Jwf65e/Hg"
+DO_SPACE_ORIGEN_ENDPOINT="https://cnetworkspace.nyc3.digitaloceanspaces.com"
+DO_SPACE_BUCKET_NAME="cnetworkspace"
+D0_SPACE_URL="https://nyc3.digitaloceanspaces.com"
 EOL
 
 # Crear el archivo docker-compose.yml
@@ -91,7 +96,7 @@ services:
       - app-network
 
   cnetwork-agent:
-    image: crenein/c-network-agent:0.7.4
+    image: crenein/c-network-agent:0.7.6
     container_name: cnetwork-agent
     ports:
       - "8000:8000"

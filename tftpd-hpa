@@ -3,4 +3,4 @@
 TFTP_USERNAME="tftp"
 TFTP_DIRECTORY="/data/files"
 TFTP_ADDRESS=":69"
-TFTP_OPTIONS="--secure"
+TFTP_OPTIONS="--secure --create"

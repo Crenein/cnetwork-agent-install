@@ -10,7 +10,9 @@ apt-get install -y \
     curl \
     gnupg \
     lsb-release \
-    fping
+    fping \
+    vsftpd \
+    tftpd-hpa
 
 # Añadir la clave GPG oficial de Docker
 curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
@@ -39,6 +41,30 @@ mkdir -p /data/files
 chown -R 1000:1000 /data/influxdb2
 chown -R 1000:1000 /data/mongodb
 chown -R 1000:1000 /data/files
+
+# Configurar FTP (vsftpd)
+# Descargar archivo de configuración del repositorio
+wget https://raw.githubusercontent.com/Crenein/cnetwork-agent-install/master/vsftpd.conf -O vsftpd.conf
+# Eliminar archivo viejo de configuración
+rm -f /etc/vsftpd.conf
+# Mover el archivo de configuración descargado
+mv vsftpd.conf /etc/
+# Reiniciar servicio vsftpd
+systemctl restart vsftpd
+# Crear usuario para backups y establecer permisos
+useradd -M -d /data backups
+chown backups:backups -R /data/files
+chmod 777 -R /data/files
+
+# Configurar TFTP (tftpd-hpa)
+# Descargar archivo de configuración del repositorio
+wget https://raw.githubusercontent.com/Crenein/cnetwork-agent-install/master/tftpd-hpa -O tftpd-hpa
+# Eliminar archivo de configuración existente
+rm -f /etc/default/tftpd-hpa
+# Mover el archivo de configuración descargado
+mv tftpd-hpa /etc/default/
+# Reiniciar servicio tftpd-hpa
+systemctl restart tftpd-hpa
 
 # Crear el archivo .env
 cat > .env << 'EOL'

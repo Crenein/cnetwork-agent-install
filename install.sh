@@ -117,7 +117,7 @@ services:
       - app-network
 
   cnetwork-agent:
-    image: crenein/c-network-agent:0.9.9
+    image: crenein/c-network-agent:0.1.0
     container_name: cnetwork-agent
     ports:
       - "8000:8000"

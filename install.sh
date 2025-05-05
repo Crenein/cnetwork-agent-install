@@ -52,7 +52,7 @@ mv vsftpd.conf /etc/
 # Reiniciar servicio vsftpd
 systemctl restart vsftpd
 # Crear usuario para backups y establecer permisos
-useradd -M -d /data backups
+useradd -M -d /data/files backups
 chown backups:backups -R /data/files
 chmod 777 -R /data/files
 

@@ -173,7 +173,7 @@ systemctl start docker
 sleep 5
 
 # Crear y arrancar los contenedores
-docker-compose up -d
+docker compose up -d
 
 # Esperar a que los contenedores estén listos
 echo "Esperando a que los servicios estén listos..."

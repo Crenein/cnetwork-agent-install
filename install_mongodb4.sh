@@ -36,6 +36,7 @@ chmod +x /usr/local/bin/docker-compose
 mkdir -p /data/influxdb2
 mkdir -p /data/mongodb
 mkdir -p /data/files
+mkdir -p /data/redis
 
 # Establecer permisos
 chown -R 1000:1000 /data/influxdb2
@@ -52,7 +53,7 @@ mv vsftpd.conf /etc/
 # Reiniciar servicio vsftpd
 systemctl restart vsftpd
 # Crear usuario para backups y establecer permisos
-useradd -M -d /data backups
+useradd -M -d /data/files backups
 chown backups:backups -R /data/files
 chmod 777 -R /data/files
 
@@ -116,6 +117,18 @@ services:
     networks:
       - app-network
 
+  redis:
+    image: redis:7.2
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - /data/redis:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    networks:
+      - app-network
+
   cnetwork-agent:
     image: crenein/c-network-agent:latest
     container_name: cnetwork-agent
@@ -131,6 +144,22 @@ services:
     depends_on:
       - influxdb
       - mongodb
+      - redis
+
+  dramatiq-worker:
+    image: crenein/c-network-agent:latest
+    container_name: dramatiq-worker
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - /data/files:/app/files
+    networks:
+      - app-network
+    depends_on:
+      - redis
+      - cnetwork-agent
+    command: ["dramatiq", "workers"]
 
 networks:
   app-network:

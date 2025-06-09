@@ -80,6 +80,7 @@ DB_NAME=mongo-agent
 DB_URL=mongodb://root:root@mongodb:27017/?authSource=admin&tls=false
 KEY_ENCRYPT=b'y1TpxOK9wYrdMT0ti9pK2NTuhw0DlrOGYrpTsl26f70='
 FERNET_KEY='y1TpxOK9wYrdMT0ti9pK2NTuhw0DlrOGYrpTsl26f70='
+REDIS_URL=redis://redis:6379/0
 EOL
 
 # Crear el archivo docker-compose.yml

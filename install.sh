@@ -417,7 +417,7 @@ services:
           memory: 512M
           cpus: '0.5'
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health/public"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -577,7 +577,7 @@ max_health_attempts=15
 health_attempt=0
 
 while [ $health_attempt -lt $max_health_attempts ]; do
-    if curl -f http://localhost:8000/health &> /dev/null; then
+    if curl -f http://localhost:8000/api/v1/health/public &> /dev/null; then
         log_success "Endpoint de salud respondiendo correctamente"
         break
     fi
@@ -641,7 +641,7 @@ log_info "📊 CONFIGURACIÓN OPTIMIZADA PARA 10 DISPOSITIVOS:"
 echo "   - Dramatiq worker: 2 procesos x 5 threads = 10 workers concurrentes"
 echo "   - Memoria limitada para optimizar uso en VM de 4GB"
 echo "   - Discovery cada 15 minutos"
-echo "   - Poller cada 4 minutos"
+echo "   - Poller cada 5 minutos"
 echo ""
 log_info "🔑 CREDENCIALES:"
 echo "   - Admin: agent@example.com / admin123"

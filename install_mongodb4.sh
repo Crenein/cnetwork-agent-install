@@ -234,13 +234,30 @@ else
     fi
 fi
 
-# Verificar instalación
-if command -v docker-compose &> /dev/null; then
+# Verificar instalación (tanto plugin como binario standalone)
+COMPOSE_CMD=""
+if docker compose version &> /dev/null; then
+    COMPOSE_CMD="docker compose"
+    COMPOSE_VERSION=$(docker compose version 2>/dev/null || echo "Error obteniendo versión")
+    log_success "Docker Compose Plugin verificado: $COMPOSE_VERSION"
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
     COMPOSE_VERSION=$(docker-compose --version 2>/dev/null || echo "Error obteniendo versión")
-    log_success "Docker Compose verificado: $COMPOSE_VERSION"
+    log_success "Docker Compose binario verificado: $COMPOSE_VERSION"
 else
     log_error "Docker Compose no se instaló correctamente"
     exit 1
+fi
+
+# Crear alias/symlink para compatibilidad si es necesario
+if [ "$COMPOSE_CMD" = "docker compose" ] && [ ! -f /usr/local/bin/docker-compose ]; then
+    log_info "Creando enlace simbólico para compatibilidad..."
+    cat > /usr/local/bin/docker-compose << 'EOF'
+#!/bin/bash
+exec docker compose "$@"
+EOF
+    chmod +x /usr/local/bin/docker-compose
+    log_success "Enlace simbólico docker-compose creado"
 fi
 
 log_info "Creando directorios para datos persistentes..."
@@ -309,7 +326,7 @@ log_info "Creando archivos de configuración..."
 
 # Crear el archivo .env
 cat > .env << 'EOL'
-INFLUX_TOKEN="dVrF7ocM2YMc4s2ueWUP18lQr6VrEY3VIxIZhNk28bT-EVJCC05njToMjpeklm0whFZIiobjbZFxNTyLXsP5Cg=="
+INFLUX_TOKEN="qPUDBM4eAwXnAT9T8uNlSrGqcO5_1JQrCHu7LKyL2lGn2e4DFZjjfOGWAYNK0cNcrlNpJ1VyZEgb3pNKUsjLVA=="
 INFLUX_BUCKET=fping
 INFLUX_URL="http://influxdb:8086"
 SECRET_KEY="09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
@@ -340,7 +357,7 @@ services:
       - DOCKER_INFLUXDB_INIT_PASSWORD=CreneinLocal
       - DOCKER_INFLUXDB_INIT_ORG=crenein
       - DOCKER_INFLUXDB_INIT_BUCKET=fping
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=dVrF7ocM2YMc4s2ueWUP18lQr6VrEY3VIxIZhNk28bT-EVJCC05njToMjpeklm0whFZIiobjbZFxNTyLXsP5Cg==
+      - "DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=dVrF7ocM2YMc4s2ueWUP18lQr6VrEY3VIxIZhNk28bT-EVJCC05njToMjpeklm0whFZIiobjbZFxNTyLXsP5Cg=="
     networks:
       - app-network
 
@@ -400,7 +417,7 @@ services:
           memory: 512M
           cpus: '0.5'
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health/public"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -472,10 +489,17 @@ fi
 log_success "Docker instalado y funcionando correctamente"
 
 # Verificar que Docker Compose funciona
-if ! docker-compose --version &> /dev/null; then
+COMPOSE_CMD=""
+if docker compose version &> /dev/null; then
+    COMPOSE_CMD="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
+else
     log_error "Docker Compose no está funcionando"
     exit 1
 fi
+
+log_success "Docker Compose configurado: $COMPOSE_CMD"
 
 # Verificar conectividad con Docker Hub
 log_info "Verificando conectividad con Docker Hub..."
@@ -496,11 +520,11 @@ fi
 
 # Crear y arrancar los contenedores
 log_info "Iniciando contenedores..."
-if docker-compose up -d; then
+if $COMPOSE_CMD up -d; then
     log_success "Contenedores iniciados correctamente"
 else
     log_error "Error al iniciar contenedores"
-    docker-compose logs
+    $COMPOSE_CMD logs
     exit 1
 fi
 
@@ -553,7 +577,7 @@ max_health_attempts=15
 health_attempt=0
 
 while [ $health_attempt -lt $max_health_attempts ]; do
-    if curl -f http://localhost:8000/health &> /dev/null; then
+    if curl -k https://localhost:8000/api/v1/health/public &> /dev/null; then
         log_success "Endpoint de salud respondiendo correctamente"
         break
     fi
@@ -597,9 +621,9 @@ done
 
 # Verificación final del estado de los contenedores
 log_info "Verificación final del estado de contenedores..."
-if docker-compose ps | grep -q "Exit\|Restarting"; then
+if $COMPOSE_CMD ps | grep -q "Exit\|Restarting"; then
     log_warning "Algunos contenedores pueden tener problemas:"
-    docker-compose ps
+    $COMPOSE_CMD ps
 else
     log_success "Todos los contenedores están funcionando correctamente"
 fi
@@ -613,15 +637,21 @@ echo "   - InfluxDB: http://localhost:8086"
 echo "   - MongoDB: localhost:27017"
 echo "   - Redis: localhost:6379"
 echo ""
+log_info "📊 CONFIGURACIÓN OPTIMIZADA PARA 10 DISPOSITIVOS:"
+echo "   - Dramatiq worker: 2 procesos x 5 threads = 10 workers concurrentes"
+echo "   - Memoria limitada para optimizar uso en VM de 4GB"
+echo "   - Discovery cada 15 minutos"
+echo "   - Poller cada 5 minutos"
 echo ""
 log_info "🔑 CREDENCIALES:"
 echo "   - Admin: agent@example.com / admin123"
 echo "   - InfluxDB: admin / CreneinLocal"
+echo "   - MongoDB: root / root"
 echo ""
 log_info "📝 COMANDOS ÚTILES:"
-echo "   - Verificar estado: docker-compose ps"
-echo "   - Ver logs: docker-compose logs -f"
-echo "   - Reiniciar servicios: docker-compose restart"
-echo "   - Detener servicios: docker-compose down"
+echo "   - Verificar estado: $COMPOSE_CMD ps"
+echo "   - Ver logs: $COMPOSE_CMD logs -f"
+echo "   - Reiniciar servicios: $COMPOSE_CMD restart"
+echo "   - Detener servicios: $COMPOSE_CMD down"
 echo ""
-log_success "Sistema listo para monitorear hasta 10 dispositivos de red"
+log_success "Sistema listo para monitorear dispositivos de red"

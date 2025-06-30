@@ -577,7 +577,7 @@ max_health_attempts=15
 health_attempt=0
 
 while [ $health_attempt -lt $max_health_attempts ]; do
-    if curl -f http://localhost:8000/api/v1/health/public &> /dev/null; then
+    if curl -k https://localhost:8000/api/v1/health/public &> /dev/null; then
         log_success "Endpoint de salud respondiendo correctamente"
         break
     fi

@@ -407,7 +407,7 @@ services:
       - app-network
 
   cnetwork-agent:
-    image: crenein/c-network-agent:celery
+    image: crenein/c-network-agent:fastapi
     container_name: cnetwork-agent
     ports:
       - "8000:8000"
@@ -429,7 +429,7 @@ services:
       retries: 3
 
   celery-worker-general:
-    image: crenein/c-network-agent:celery
+    image: crenein/c-network-agent:celery-worker
     container_name: celery-worker-general
     restart: always
     env_file:
@@ -445,7 +445,7 @@ services:
     command: celery -A celery_app worker --loglevel=info --concurrency=3 --queues=fping,backup,default --max-tasks-per-child=100
 
   celery-worker-discovery:
-    image: crenein/c-network-agent:celery
+    image: crenein/c-network-agent:celery-worker
     container_name: celery-worker-discovery
     restart: always
     env_file:
@@ -461,7 +461,7 @@ services:
     command: celery -A celery_app worker --loglevel=info --concurrency=35 --queues=discovery,polling --max-tasks-per-child=25 --pool=prefork
 
   celery-beat:
-    image: crenein/c-network-agent:celery
+    image: crenein/c-network-agent:celery-beat
     container_name: celery-beat
     restart: always
     env_file:
@@ -474,10 +474,9 @@ services:
       - redis
       - mongodb
       - cnetwork-agent
-    command: celery -A celery_app beat --loglevel=info
 
   flower:
-    image: crenein/c-network-agent:celery
+    image: crenein/c-network-agent:flower
     container_name: flower
     ports:
       - "5555:5555"
@@ -491,7 +490,6 @@ services:
     depends_on:
       - redis
       - cnetwork-agent
-    command: celery -A celery_app flower --port=5555
 
 networks:
   app-network:
@@ -682,6 +680,18 @@ done
 # Inicializar configuración de Celery Beat
 log_info "Inicializando configuración de Celery Beat..."
 if docker exec cnetwork-agent python3 -c "
+# Instalar nest_asyncio si no está disponible
+import subprocess
+import sys
+try:
+    import nest_asyncio
+    print('nest_asyncio ya está instalado')
+except ImportError:
+    print('Instalando nest_asyncio...')
+    subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'nest_asyncio'])
+    print('nest_asyncio instalado')
+
+# Inicializar scheduler
 from tasks.celery_scheduler import apply_beat_schedule
 apply_beat_schedule()
 print('Celery Beat schedule inicializado')
@@ -693,8 +703,16 @@ fi
 
 # Reiniciar celery-beat para cargar la nueva configuración
 log_info "Reiniciando Celery Beat para cargar configuración..."
-docker-compose restart celery-beat
+$COMPOSE_CMD restart celery-beat
 sleep 5
+
+# Verificar acceso a Flower
+log_info "Verificando acceso a Flower..."
+if curl -f http://localhost:5555 &> /dev/null; then
+    log_success "Flower accesible en http://localhost:5555"
+else
+    log_warning "Flower puede tardar en inicializar. Verificar logs: docker logs flower"
+fi
 
 # Verificación final del estado de los contenedores
 log_info "Verificación final del estado de contenedores..."
@@ -709,7 +727,7 @@ echo ""
 log_success "🎉 ¡INSTALACIÓN COMPLETADA EXITOSAMENTE!"
 echo ""
 log_info "📋 INFORMACIÓN DEL SISTEMA OPTIMIZADO:"
-echo "   - FastAPI: http://localhost:8000"
+echo "   - FastAPI: https://localhost:8000"
 echo "   - InfluxDB: http://localhost:8086"
 echo "   - MongoDB: localhost:27017"
 echo "   - Redis: localhost:6379"
@@ -726,7 +744,7 @@ echo ""
 log_info "📝 COMANDOS ÚTILES:"
 echo "   - Verificar estado: $COMPOSE_CMD ps"
 echo "   - Ver logs: $COMPOSE_CMD logs -f [servicio]"
-echo "   - Ver logs Celery: $COMPOSE_CMD logs -f celery-worker celery-beat"
+echo "   - Ver logs Celery: $COMPOSE_CMD logs -f celery-worker-general celery-beat"
 echo "   - Monitoreo Flower: http://localhost:5555"
 echo "   - Reiniciar servicios: $COMPOSE_CMD restart"
 echo "   - Detener servicios: $COMPOSE_CMD down"
@@ -734,6 +752,8 @@ echo ""
 log_info "🎯 CONFIGURACIÓN DESDE ADMIN:"
 echo "   - Intervalos de fping, discovery, poller configurables"
 echo "   - Tasks se ejecutan automáticamente según configuración"
-echo "   - Monitoreo en tiempo real con Flower"
+echo "   - Monitoreo en tiempo real con Flower: http://localhost:5555"
+echo "   - Si Flower no responde, verificar: docker logs flower"
 echo ""
+
 log_success "🎉 Sistema flexible listo - Se adapta automáticamente a tu VM y necesidades de monitoreo"

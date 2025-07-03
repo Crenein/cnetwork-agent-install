@@ -636,11 +636,8 @@ max_health_attempts=15
 health_attempt=0
 
 while [ $health_attempt -lt $max_health_attempts ]; do
-    # Intentar primero HTTP, luego HTTPS si está disponible
-    if curl -f http://localhost:8000/api/v1/health/public &> /dev/null; then
-        log_success "Endpoint de salud respondiendo correctamente (HTTP)"
-        break
-    elif curl -kf https://localhost:8000/api/v1/health/public &> /dev/null; then
+    # Forzar HTTPS sin verificar certificado (como era antes)
+    if curl -kf https://localhost:8000/api/v1/health/public &> /dev/null; then
         log_success "Endpoint de salud respondiendo correctamente (HTTPS)"
         break
     fi

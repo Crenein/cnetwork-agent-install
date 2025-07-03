@@ -442,7 +442,7 @@ services:
       - redis
       - mongodb
       - cnetwork-agent
-    command: celery -A celery_app worker --loglevel=info --concurrency=6 --queues=fping,backup,default --max-tasks-per-child=100
+    command: celery -A celery_app worker --loglevel=info --concurrency=3 --queues=fping,backup,default --max-tasks-per-child=100
 
   celery-worker-discovery:
     image: crenein/c-network-agent:celery
@@ -458,7 +458,7 @@ services:
       - redis
       - mongodb
       - cnetwork-agent
-    command: celery -A celery_app worker --loglevel=info --concurrency=20 --queues=discovery,polling --max-tasks-per-child=50 --pool=prefork
+    command: celery -A celery_app worker --loglevel=info --concurrency=35 --queues=discovery,polling --max-tasks-per-child=25 --pool=prefork
 
   celery-beat:
     image: crenein/c-network-agent:celery
@@ -636,8 +636,12 @@ max_health_attempts=15
 health_attempt=0
 
 while [ $health_attempt -lt $max_health_attempts ]; do
-    if curl -kf https://localhost:8000/api/v1/health/public &> /dev/null; then
-        log_success "Endpoint de salud respondiendo correctamente"
+    # Intentar primero HTTP, luego HTTPS si está disponible
+    if curl -f http://localhost:8000/api/v1/health/public &> /dev/null; then
+        log_success "Endpoint de salud respondiendo correctamente (HTTP)"
+        break
+    elif curl -kf https://localhost:8000/api/v1/health/public &> /dev/null; then
+        log_success "Endpoint de salud respondiendo correctamente (HTTPS)"
         break
     fi
     health_attempt=$((health_attempt + 1))
@@ -677,6 +681,23 @@ while [ $retry_count -lt $max_retries ]; do
         fi
     fi
 done
+
+# Inicializar configuración de Celery Beat
+log_info "Inicializando configuración de Celery Beat..."
+if docker exec cnetwork-agent python3 -c "
+from tasks.celery_scheduler import apply_beat_schedule
+apply_beat_schedule()
+print('Celery Beat schedule inicializado')
+"; then
+    log_success "Configuración de Celery Beat inicializada"
+else
+    log_warning "Error inicializando configuración de Celery Beat"
+fi
+
+# Reiniciar celery-beat para cargar la nueva configuración
+log_info "Reiniciando Celery Beat para cargar configuración..."
+docker-compose restart celery-beat
+sleep 5
 
 # Verificación final del estado de los contenedores
 log_info "Verificación final del estado de contenedores..."

@@ -36,8 +36,11 @@ handle_error() {
 # Configurar trap para manejar errores
 trap 'handle_error $LINENO "$BASH_COMMAND"' ERR
 
-echo "🚀 INICIANDO INSTALACIÓN DE C-NETWORK-AGENT"
-echo "=============================================="
+echo "🚀 INICIANDO INSTALACIÓN DE C-NETWORK-AGENT FLEXIBLE"
+echo "======================================================"
+echo "📋 Arquitectura adaptable: Celery + Redis para 10-500+ dispositivos"
+echo "🔧 Se adapta automáticamente a los recursos de tu VM"
+echo ""
 
 # Detectar sistema operativo
 log_info "Detectando sistema operativo..."
@@ -324,9 +327,23 @@ fi
 
 log_info "Creando archivos de configuración..."
 
-# Crear el archivo .env
-cat > .env << 'EOL'
-INFLUX_TOKEN="qPUDBM4eAwXnAT9T8uNlSrGqcO5_1JQrCHu7LKyL2lGn2e4DFZjjfOGWAYNK0cNcrlNpJ1VyZEgb3pNKUsjLVA=="
+
+
+
+
+# =====================
+# TOKEN INICIAL INFLUXDB (sin Docker secrets)
+# =====================
+
+# Usuario, password y token inicial seguro
+INFLUX_ADMIN_USER="admin"
+INFLUX_ADMIN_PASSWORD="CreneinLocal"
+INFLUX_ADMIN_TOKEN=$(openssl rand -base64 48 | tr -d '\n' | head -c 64)
+
+
+# Crear el archivo .env base con el token generado
+cat > .env << EOL
+INFLUX_TOKEN="$INFLUX_ADMIN_TOKEN"
 INFLUX_BUCKET=fping
 INFLUX_URL="http://influxdb:8086"
 SECRET_KEY="09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
@@ -340,8 +357,10 @@ FERNET_KEY='y1TpxOK9wYrdMT0ti9pK2NTuhw0DlrOGYrpTsl26f70='
 REDIS_URL=redis://redis:6379/0
 EOL
 
-# Crear el archivo docker-compose.yml
-cat > docker-compose.yml << 'EOL'
+# Crear el archivo docker-compose.yml si no existe, usando las variables generadas
+if [ ! -f docker-compose.yml ]; then
+  log_info "Generando archivo docker-compose.yml..."
+  cat > docker-compose.yml <<EOL
 version: '3.8'
 services:
   influxdb:
@@ -353,11 +372,11 @@ services:
       - /data/influxdb2:/var/lib/influxdb2
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=admin
-      - DOCKER_INFLUXDB_INIT_PASSWORD=CreneinLocal
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUX_ADMIN_USER}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUX_ADMIN_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_ADMIN_TOKEN}
       - DOCKER_INFLUXDB_INIT_ORG=crenein
       - DOCKER_INFLUXDB_INIT_BUCKET=fping
-      - "DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=dVrF7ocM2YMc4s2ueWUP18lQr6VrEY3VIxIZhNk28bT-EVJCC05njToMjpeklm0whFZIiobjbZFxNTyLXsP5Cg=="
     networks:
       - app-network
 
@@ -383,17 +402,12 @@ services:
       - "6379:6379"
     volumes:
       - /data/redis:/data
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
     networks:
       - app-network
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
 
   cnetwork-agent:
-    image: crenein/c-network-agent:latest
+    image: crenein/c-network-agent:fastapi
     container_name: cnetwork-agent
     ports:
       - "8000:8000"
@@ -408,23 +422,64 @@ services:
       - influxdb
       - mongodb
       - redis
-    deploy:
-      resources:
-        limits:
-          memory: 1.5G
-          cpus: '1.5'
-        reservations:
-          memory: 512M
-          cpus: '0.5'
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health/public"]
+      test: ["CMD", "curl", "-kf", "https://localhost:8000/api/v1/health/public"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  dramatiq-worker:
-    image: crenein/c-network-agent:latest
-    container_name: dramatiq-worker
+  celery-worker-general:
+    image: crenein/c-network-agent:celery-worker
+    container_name: celery-worker-general
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - /data/files:/app/files
+    networks:
+      - app-network
+    depends_on:
+      - redis
+      - mongodb
+      - cnetwork-agent
+    command: celery -A celery_app worker --loglevel=info --concurrency=3 --queues=fping,backup,default --max-tasks-per-child=100
+
+  celery-worker-discovery:
+    image: crenein/c-network-agent:celery-worker
+    container_name: celery-worker-discovery
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - /data/files:/app/files
+    networks:
+      - app-network
+    depends_on:
+      - redis
+      - mongodb
+      - cnetwork-agent
+    command: celery -A celery_app worker --loglevel=info --concurrency=35 --queues=discovery,polling --max-tasks-per-child=25 --pool=prefork
+
+  celery-beat:
+    image: crenein/c-network-agent:celery-beat
+    container_name: celery-beat
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - /data/files:/app/files
+    networks:
+      - app-network
+    depends_on:
+      - redis
+      - mongodb
+      - cnetwork-agent
+
+  flower:
+    image: crenein/c-network-agent:flower
+    container_name: flower
+    ports:
+      - "5555:5555"
     restart: always
     env_file:
       - .env
@@ -435,20 +490,20 @@ services:
     depends_on:
       - redis
       - cnetwork-agent
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: '1.0'
-        reservations:
-          memory: 512M
-          cpus: '0.5'
-    command: ["dramatiq", "worker_poller", "--processes", "2", "--threads", "5"]
 
 networks:
   app-network:
     driver: bridge
 EOL
+  log_success "Archivo docker-compose.yml generado correctamente."
+else
+  log_info "docker-compose.yml ya existe, no se sobrescribe."
+fi
+
+
+
+
+
 
 # Asegurarse de que Docker esté iniciado
 log_info "Iniciando servicios Docker..."
@@ -565,7 +620,9 @@ log_info "Esperando inicialización de servicios base..."
 sleep 10
 
 check_container_health "cnetwork-agent" || exit 1
-check_container_health "dramatiq-worker" || exit 1
+check_container_health "celery-worker-general" || exit 1
+check_container_health "celery-worker-discovery" || exit 1
+check_container_health "celery-beat" || exit 1
 
 # Esperar adicional para que los servicios se inicialicen completamente
 log_info "Esperando inicialización completa de servicios..."
@@ -577,8 +634,9 @@ max_health_attempts=15
 health_attempt=0
 
 while [ $health_attempt -lt $max_health_attempts ]; do
-    if curl -k https://localhost:8000/api/v1/health/public &> /dev/null; then
-        log_success "Endpoint de salud respondiendo correctamente"
+    # Forzar HTTPS sin verificar certificado (como era antes)
+    if curl -kf https://localhost:8000/api/v1/health/public &> /dev/null; then
+        log_success "Endpoint de salud respondiendo correctamente (HTTPS)"
         break
     fi
     health_attempt=$((health_attempt + 1))
@@ -619,6 +677,43 @@ while [ $retry_count -lt $max_retries ]; do
     fi
 done
 
+# Inicializar configuración de Celery Beat
+log_info "Inicializando configuración de Celery Beat..."
+if docker exec cnetwork-agent python3 -c "
+# Instalar nest_asyncio si no está disponible
+import subprocess
+import sys
+try:
+    import nest_asyncio
+    print('nest_asyncio ya está instalado')
+except ImportError:
+    print('Instalando nest_asyncio...')
+    subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'nest_asyncio'])
+    print('nest_asyncio instalado')
+
+# Inicializar scheduler
+from tasks.celery_scheduler import apply_beat_schedule
+apply_beat_schedule()
+print('Celery Beat schedule inicializado')
+"; then
+    log_success "Configuración de Celery Beat inicializada"
+else
+    log_warning "Error inicializando configuración de Celery Beat"
+fi
+
+# Reiniciar celery-beat para cargar la nueva configuración
+log_info "Reiniciando Celery Beat para cargar configuración..."
+$COMPOSE_CMD restart celery-beat
+sleep 5
+
+# Verificar acceso a Flower
+log_info "Verificando acceso a Flower..."
+if curl -f http://localhost:5555 &> /dev/null; then
+    log_success "Flower accesible en http://localhost:5555"
+else
+    log_warning "Flower puede tardar en inicializar. Verificar logs: docker logs flower"
+fi
+
 # Verificación final del estado de los contenedores
 log_info "Verificación final del estado de contenedores..."
 if $COMPOSE_CMD ps | grep -q "Exit\|Restarting"; then
@@ -631,17 +726,15 @@ fi
 echo ""
 log_success "🎉 ¡INSTALACIÓN COMPLETADA EXITOSAMENTE!"
 echo ""
-log_info "📋 INFORMACIÓN DEL SISTEMA:"
-echo "   - FastAPI: http://localhost:8000"
+log_info "📋 INFORMACIÓN DEL SISTEMA OPTIMIZADO:"
+echo "   - FastAPI: https://localhost:8000"
 echo "   - InfluxDB: http://localhost:8086"
 echo "   - MongoDB: localhost:27017"
 echo "   - Redis: localhost:6379"
+echo "   - Flower (Monitoreo Celery): http://localhost:5555"
 echo ""
-log_info "📊 CONFIGURACIÓN OPTIMIZADA PARA 10 DISPOSITIVOS:"
-echo "   - Dramatiq worker: 2 procesos x 5 threads = 10 workers concurrentes"
-echo "   - Memoria limitada para optimizar uso en VM de 4GB"
-echo "   - Discovery cada 15 minutos"
-echo "   - Poller cada 5 minutos"
+log_info "🚀 ESCALAMIENTO INTELIGENTE:"
+echo "   - Monitoreo en /api/v1/monitoring/system/health"
 echo ""
 log_info "🔑 CREDENCIALES:"
 echo "   - Admin: agent@example.com / admin123"
@@ -650,8 +743,17 @@ echo "   - MongoDB: root / root"
 echo ""
 log_info "📝 COMANDOS ÚTILES:"
 echo "   - Verificar estado: $COMPOSE_CMD ps"
-echo "   - Ver logs: $COMPOSE_CMD logs -f"
+echo "   - Ver logs: $COMPOSE_CMD logs -f [servicio]"
+echo "   - Ver logs Celery: $COMPOSE_CMD logs -f celery-worker-general celery-beat"
+echo "   - Monitoreo Flower: http://localhost:5555"
 echo "   - Reiniciar servicios: $COMPOSE_CMD restart"
 echo "   - Detener servicios: $COMPOSE_CMD down"
 echo ""
-log_success "Sistema listo para monitorear dispositivos de red"
+log_info "🎯 CONFIGURACIÓN DESDE ADMIN:"
+echo "   - Intervalos de fping, discovery, poller configurables"
+echo "   - Tasks se ejecutan automáticamente según configuración"
+echo "   - Monitoreo en tiempo real con Flower: http://localhost:5555"
+echo "   - Si Flower no responde, verificar: docker logs flower"
+echo ""
+
+log_success "🎉 Sistema flexible listo - Se adapta automáticamente a tu VM y necesidades de monitoreo"

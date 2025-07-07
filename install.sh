@@ -428,9 +428,9 @@ services:
       timeout: 10s
       retries: 3
 
-  celery-worker-general:
+  celery-worker-fping:
     image: crenein/c-network-agent:celery-worker
-    container_name: celery-worker-general
+    container_name: celery-worker-fping
     restart: always
     env_file:
       - .env
@@ -442,7 +442,23 @@ services:
       - redis
       - mongodb
       - cnetwork-agent
-    command: celery -A celery_app worker --loglevel=info --concurrency=3 --queues=fping,backup,default --max-tasks-per-child=100
+    command: celery -A celery_app worker --loglevel=info --concurrency=2 --queues=fping,backup,default --max-tasks-per-child=100 --pool=prefork
+
+  celery-worker-poller:
+    image: crenein/c-network-agent:celery-worker
+    container_name: celery-worker-poller
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - /data/files:/app/files
+    networks:
+      - app-network
+    depends_on:
+      - redis
+      - mongodb
+      - cnetwork-agent
+    command: celery -A celery_app worker --loglevel=info --concurrency=8 --queues=polling --max-tasks-per-child=50 --pool=prefork
 
   celery-worker-discovery:
     image: crenein/c-network-agent:celery-worker
@@ -458,7 +474,7 @@ services:
       - redis
       - mongodb
       - cnetwork-agent
-    command: celery -A celery_app worker --loglevel=info --concurrency=35 --queues=discovery,polling --max-tasks-per-child=25 --pool=prefork
+    command: celery -A celery_app worker --loglevel=info --concurrency=16 --queues=discovery --max-tasks-per-child=25 --pool=prefork
 
   celery-beat:
     image: crenein/c-network-agent:celery-beat
@@ -483,6 +499,8 @@ services:
     restart: always
     env_file:
       - .env
+    environment:
+      - FLOWER_UNAUTHENTICATED_API=1
     volumes:
       - /data/files:/app/files
     networks:

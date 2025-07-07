@@ -628,6 +628,7 @@ check_container_health() {
 # Verificar que los contenedores estén saludables
 log_info "Verificando que los servicios estén listos..."
 
+
 # Verificar contenedores en orden de dependencias
 check_container_health "influxdb" || exit 1
 check_container_health "mongodb" || exit 1
@@ -638,7 +639,8 @@ log_info "Esperando inicialización de servicios base..."
 sleep 10
 
 check_container_health "cnetwork-agent" || exit 1
-check_container_health "celery-worker-general" || exit 1
+check_container_health "celery-worker-fping" || exit 1
+check_container_health "celery-worker-poller" || exit 1
 check_container_health "celery-worker-discovery" || exit 1
 check_container_health "celery-beat" || exit 1
 

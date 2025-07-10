@@ -274,7 +274,7 @@ mkdir -p /data/redis
 # Establecer permisos
 chown -R 1000:1000 /data/influxdb2
 chown -R 1000:1000 /data/mongodb
-chown -R 1000:1000 /data/files
+chmod 2777 /data/files
 
 log_success "Directorios de datos creados correctamente"
 
@@ -304,6 +304,7 @@ if ! id "backups" &>/dev/null; then
 else
     log_info "Usuario 'backups' ya existe"
 fi
+# No es necesario cambiar propietario ni permisos, Docker tendrá acceso total por 2777
 
 chown backups:backups -R /data/files
 chmod 755 -R /data/files

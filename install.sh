@@ -444,6 +444,14 @@ services:
       - mongodb
       - cnetwork-agent
     command: celery -A celery_app worker --loglevel=info --concurrency=2 --queues=fping,backup,default --max-tasks-per-child=100 --pool=prefork
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.25'
 
   celery-worker-poller:
     image: crenein/c-network-agent:celery-worker
@@ -460,6 +468,14 @@ services:
       - mongodb
       - cnetwork-agent
     command: celery -A celery_app worker --loglevel=info --concurrency=8 --queues=polling --max-tasks-per-child=50 --pool=prefork
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.5'
 
   celery-worker-discovery:
     image: crenein/c-network-agent:celery-worker
@@ -476,6 +492,14 @@ services:
       - mongodb
       - cnetwork-agent
     command: celery -A celery_app worker --loglevel=info --concurrency=16 --queues=discovery --max-tasks-per-child=25 --pool=prefork
+    deploy:
+      resources:
+        limits:
+          memory: 1.2G
+          cpus: '2.0'
+        reservations:
+          memory: 800M
+          cpus: '1.0'
 
   celery-beat:
     image: crenein/c-network-agent:celery-beat
@@ -491,6 +515,14 @@ services:
       - redis
       - mongodb
       - cnetwork-agent
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+        reservations:
+          memory: 64M
+          cpus: '0.1'
 
   flower:
     image: crenein/c-network-agent:flower
@@ -509,6 +541,14 @@ services:
     depends_on:
       - redis
       - cnetwork-agent
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+        reservations:
+          memory: 64M
+          cpus: '0.1'
 
 networks:
   app-network:

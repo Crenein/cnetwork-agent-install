@@ -408,7 +408,7 @@ services:
       - app-network
 
   cnetwork-agent:
-    image: crenein/c-network-agent:fastapi
+    image: crenein/c-network-agent:fastapi-latest
     container_name: cnetwork-agent
     ports:
       - "8000:8000"
@@ -430,7 +430,7 @@ services:
       retries: 3
 
   celery-worker-fping:
-    image: crenein/c-network-agent:celery-worker
+    image: crenein/c-network-agent:celery-worker-latest
     container_name: celery-worker-fping
     restart: always
     env_file:
@@ -443,7 +443,8 @@ services:
       - redis
       - mongodb
       - cnetwork-agent
-    command: celery -A celery_app worker --loglevel=info --concurrency=2 --queues=fping,backup,default --max-tasks-per-child=100 --pool=prefork
+    # Worker general: maneja tareas de fping, backup y tareas por defecto (alta prioridad a fping)
+    command: celery -A celery_app worker --loglevel=info --concurrency=4 --max-memory-per-child=1500 --queues=fping,backup,default --max-tasks-per-child=100 --pool=prefork
     deploy:
       resources:
         limits:
@@ -454,7 +455,7 @@ services:
           cpus: '0.25'
 
   celery-worker-poller:
-    image: crenein/c-network-agent:celery-worker
+    image: crenein/c-network-agent:celery-worker-latest
     container_name: celery-worker-poller
     restart: always
     env_file:
@@ -467,7 +468,8 @@ services:
       - redis
       - mongodb
       - cnetwork-agent
-    command: celery -A celery_app worker --loglevel=info --concurrency=8 --queues=polling --max-tasks-per-child=50 --pool=prefork
+    # Worker especializado: maneja tareas de polling SNMP (carga media)
+    command: celery -A celery_app worker --loglevel=info --concurrency=4 --max-memory-per-child=1500 --queues=polling --max-tasks-per-child=50 --pool=prefork
     deploy:
       resources:
         limits:
@@ -478,7 +480,7 @@ services:
           cpus: '0.5'
 
   celery-worker-discovery:
-    image: crenein/c-network-agent:celery-worker
+    image: crenein/c-network-agent:celery-worker-latest
     container_name: celery-worker-discovery
     restart: always
     env_file:
@@ -491,7 +493,11 @@ services:
       - redis
       - mongodb
       - cnetwork-agent
-    command: celery -A celery_app worker --loglevel=info --concurrency=16 --queues=discovery --max-tasks-per-child=25 --pool=prefork
+    # Worker discovery: maneja tareas de descubrimiento de dispositivos (carga alta, menos frecuente)
+    command: celery -A celery_app worker --loglevel=info --concurrency=4 --max-memory-per-child=1500 --queues=discovery --max-tasks-per-child=25 --pool=prefork
+# NOTA IMPORTANTE:
+# No modificar la arquitectura de colas ni los nombres de las colas sin entender el impacto en la prioridad y el flujo de tareas.
+# fping = prioridad máxima (checks de conectividad), polling = prioridad media (métricas SNMP), discovery = prioridad baja (descubrimiento de dispositivos), backup = tareas de fondo.
     deploy:
       resources:
         limits:
@@ -502,7 +508,7 @@ services:
           cpus: '1.0'
 
   celery-beat:
-    image: crenein/c-network-agent:celery-beat
+    image: crenein/c-network-agent:celery-beat-latest
     container_name: celery-beat
     restart: always
     env_file:
@@ -525,7 +531,7 @@ services:
           cpus: '0.1'
 
   flower:
-    image: crenein/c-network-agent:flower
+    image: crenein/c-network-agent:flower-latest
     container_name: flower
     ports:
       - "5555:5555"

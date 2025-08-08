@@ -54,9 +54,9 @@ else
     exit 1
 fi
 
-# Verificar que sea Ubuntu o Debian
-if [[ "$OS" != "ubuntu" && "$OS" != "debian" ]]; then
-    log_error "Este script solo funciona en Ubuntu o Debian"
+# Verificar que sea Ubuntu o Debian o Linux mint
+if [[ "$OS" != "ubuntu" && "$OS" != "debian" && "$OS" != "linuxmint" ]]; then
+    log_error "Este script solo funciona en Ubuntu, Debian o Linux Mint"
     exit 1
 fi
 
@@ -684,6 +684,87 @@ check_container_health "redis" || exit 1
 # Esperar un poco más para que los servicios se inicialicen
 log_info "Esperando inicialización de servicios base..."
 sleep 10
+
+# Crear bucket adicional "devices" en InfluxDB
+log_info "Creando bucket adicional 'devices' en InfluxDB..."
+retry_count=0
+max_retries=5
+
+while [ $retry_count -lt $max_retries ]; do
+    # Esperar a que InfluxDB API esté disponible
+    if curl -f http://localhost:8086/health &> /dev/null; then
+        log_success "InfluxDB API disponible"
+        
+        # Primero obtener el orgID real
+        log_info "Obteniendo ID de la organización..."
+        org_response=$(curl -s -X GET "http://localhost:8086/api/v2/orgs" \
+            -H "Authorization: Token $INFLUX_ADMIN_TOKEN" 2>/dev/null)
+        
+        # Extraer el orgID del JSON eliminando espacios y saltos de línea primero
+        org_id=$(echo "$org_response" | tr -d ' \n\t\r' | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+        
+        if [ -z "$org_id" ]; then
+            log_warning "No se pudo obtener orgID. Respuesta de API:"
+            echo "$org_response" | head -200
+            log_info "Intentando método alternativo..."
+            # Método alternativo usando sed
+            org_id=$(echo "$org_response" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+            if [ -n "$org_id" ]; then
+                log_info "OrgID obtenido con método alternativo: $org_id"
+            fi
+        fi
+        
+        if [ -n "$org_id" ]; then
+            log_info "✅ Usando orgID: $org_id"
+            
+            # Crear bucket "devices" usando la API HTTP con el orgID correcto
+            curl_output=$(mktemp)
+            http_code=$(curl -s -w "%{http_code}" -X POST "http://localhost:8086/api/v2/buckets" \
+                -H "Authorization: Token $INFLUX_ADMIN_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d '{
+                    "orgID": "'"$org_id"'",
+                    "name": "devices"
+                }' -o "$curl_output" 2>/dev/null)
+            
+            curl_body=$(cat "$curl_output")
+            rm -f "$curl_output"
+            
+            case "$http_code" in
+                "201")
+                    log_success "Bucket 'devices' creado correctamente en InfluxDB"
+                    log_info "ID del bucket: $(echo "$curl_body" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)"
+                    break
+                    ;;
+                "422")
+                    if echo "$curl_body" | grep -q "already exists\|conflict"; then
+                        log_warning "Bucket 'devices' ya existe en InfluxDB - ¡Perfecto!"
+                        break
+                    else
+                        log_warning "Error 422 no esperado: $curl_body"
+                    fi
+                    ;;
+                *)
+                    log_warning "Error al crear bucket 'devices' (HTTP: $http_code)"
+                    log_info "Respuesta completa: $curl_body"
+                    ;;
+            esac
+        else
+            log_warning "No se pudo obtener orgID válido"
+        fi
+    else
+        log_info "Esperando que InfluxDB API esté disponible..."
+    fi
+    
+    retry_count=$((retry_count + 1))
+    if [ $retry_count -lt $max_retries ]; then
+        log_info "Intento $retry_count/$max_retries - Reintentando en 5 segundos..."
+        sleep 5
+    else
+        log_warning "No se pudo crear bucket 'devices' después de $max_retries intentos"
+        log_warning "El bucket se puede crear manualmente desde la interfaz de InfluxDB"
+    fi
+done
 
 check_container_health "cnetwork-agent" || exit 1
 check_container_health "celery-worker-fping" || exit 1

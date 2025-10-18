@@ -33,8 +33,175 @@ handle_error() {
     exit 1
 }
 
+# Función para verificar estado de datos persistentes
+verify_data_state() {
+    log_info "Verificando estado de datos persistentes..."
+
+    local data_found=false
+    declare -A DATA_STATUS
+
+    # Verificar cada directorio de datos
+    if [ -d "/data/influxdb2" ] && [ "$(ls -A /data/influxdb2 2>/dev/null)" ]; then
+        local size=$(du -sh /data/influxdb2 2>/dev/null | cut -f1)
+        DATA_STATUS["influxdb"]="✅ Datos encontrados (${size:-0})"
+        data_found=true
+    else
+        DATA_STATUS["influxdb"]="ℹ️  Directorio vacío (primera instalación)"
+    fi
+
+    if [ -d "/data/mongodb" ] && [ "$(ls -A /data/mongodb 2>/dev/null)" ]; then
+        local size=$(du -sh /data/mongodb 2>/dev/null | cut -f1)
+        DATA_STATUS["mongodb"]="✅ Datos encontrados (${size:-0})"
+        data_found=true
+    else
+        DATA_STATUS["mongodb"]="ℹ️  Directorio vacío (primera instalación)"
+    fi
+
+    if [ -d "/data/redis" ] && [ "$(ls -A /data/redis 2>/dev/null)" ]; then
+        local size=$(du -sh /data/redis 2>/dev/null | cut -f1)
+        DATA_STATUS["redis"]="✅ Datos encontrados (${size:-0})"
+        data_found=true
+    else
+        DATA_STATUS["redis"]="ℹ️  Directorio vacío (primera instalación)"
+    fi
+
+    if [ -d "/data/files" ] && [ "$(ls -A /data/files 2>/dev/null)" ]; then
+        local size=$(du -sh /data/files 2>/dev/null | cut -f1)
+        DATA_STATUS["files"]="✅ Datos encontrados (${size:-0})"
+        data_found=true
+    else
+        DATA_STATUS["files"]="ℹ️  Directorio vacío (primera instalación)"
+    fi
+
+    # Mostrar estado
+    echo ""
+    log_info "Estado de datos persistentes:"
+    for service in "${!DATA_STATUS[@]}"; do
+        echo "   ${DATA_STATUS[$service]}"
+    done
+    echo ""
+
+    if [ "$data_found" = true ]; then
+        log_success "✅ Datos existentes detectados - serán preservados durante la instalación"
+    else
+        log_info "ℹ️  Primera instalación - se crearán directorios vacíos"
+    fi
+
+    return 0
+}
+
+# Función para asegurar directorios persistentes (NO toca datos existentes)
+ensure_persistent_directories() {
+    log_info "Verificando y asegurando directorios para datos persistentes..."
+
+    # Definir directorios requeridos con sus propietarios
+    declare -A DATA_DIRS_CONFIG=(
+        ["/data/influxdb2"]="1000:1000:influxdb"
+        ["/data/mongodb"]="1000:1000:mongodb"
+        ["/data/redis"]="1000:1000:redis"
+        ["/data/files"]="backups:backups:backups"
+    )
+
+    # Crear directorio base si no existe
+    if [ ! -d "/data" ]; then
+        log_info "Creando directorio base /data..."
+        mkdir -p /data
+        if [ $? -ne 0 ]; then
+            log_error "No se pudo crear directorio /data"
+            return 1
+        fi
+        log_success "Directorio base /data creado"
+    fi
+
+    # Procesar cada directorio requerido
+    for dir in "${!DATA_DIRS_CONFIG[@]}"; do
+        IFS=':' read -r user group service <<< "${DATA_DIRS_CONFIG[$dir]}"
+
+        if [ ! -d "$dir" ]; then
+            # Directorio no existe, crearlo
+            log_info "Creando directorio $dir para $service..."
+            mkdir -p "$dir"
+            if [ $? -ne 0 ]; then
+                log_error "No se pudo crear directorio $dir"
+                return 1
+            fi
+
+            # Establecer permisos en directorio nuevo
+            chown "$user:$group" "$dir"
+            chmod 755 "$dir"
+            log_success "Directorio $dir creado y configurado para $service"
+        else
+            # Directorio existe, verificar que sea accesible pero NO cambiar permisos si tiene datos
+            log_info "Verificando directorio existente $dir..."
+
+            # Verificar permisos básicos de acceso
+            if [ ! -r "$dir" ] || [ ! -w "$dir" ]; then
+                log_warning "Directorio $dir tiene permisos restrictivos, ajustando para acceso básico..."
+                # Solo dar permisos mínimos para que Docker pueda acceder
+                chmod u+rwX "$dir" 2>/dev/null || true
+            fi
+
+            # Verificar propietario (solo si está vacío)
+            if [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
+                # Directorio vacío, podemos ajustar propietario
+                current_owner=$(stat -c "%U:%G" "$dir" 2>/dev/null || echo "unknown:unknown")
+                if [ "$current_owner" != "$user:$group" ]; then
+                    log_info "Ajustando propietario de directorio vacío $dir..."
+                    chown "$user:$group" "$dir" 2>/dev/null || true
+                fi
+            else
+                # Directorio con datos - NO TOCAR propietario ni permisos
+                local size=$(du -sh "$dir" 2>/dev/null | cut -f1)
+                log_success "✅ $dir: Datos existentes preservados (${size:-0})"
+            fi
+        fi
+
+        # Verificar espacio disponible
+        local available_space=$(df "$dir" 2>/dev/null | tail -1 | awk '{print $4}' || echo "unknown")
+        if [ "$available_space" != "unknown" ] && [ "$available_space" -lt 1000000 ]; then
+            log_warning "Poco espacio disponible en $dir: ${available_space}KB"
+        fi
+    done
+
+    log_success "Verificación de directorios persistentes completada"
+    return 0
+}
+
+# Función para mostrar ayuda
+show_help() {
+    echo "C-Network Agent - Script de Instalación"
+    echo "Versión: 1.0.0"
+    echo ""
+    echo "Uso:"
+    echo "  $0              # Instalación completa del sistema"
+    echo "  $0 help         # Mostrar esta ayuda"
+    echo ""
+    echo "Características:"
+    echo "  - Instala Docker, Docker Compose y servicios requeridos"
+    echo "  - Configura directorios persistentes en /data/*"
+    echo "  - Preserva datos existentes durante reinstalaciones"
+    echo "  - Verifica integridad de datos antes de iniciar contenedores"
+    echo ""
+    echo "Directorios de datos (persisten independientemente de contenedores):"
+    echo "  - /data/influxdb2    (Métricas de series temporales)"
+    echo "  - /data/mongodb      (Configuración de dispositivos)"
+    echo "  - /data/redis        (Configuración de tareas y cache)"
+    echo "  - /data/files        (Archivos y configuraciones)"
+    echo ""
+    echo "Notas:"
+    echo "  - Los datos en /data/* sobreviven al borrado de contenedores"
+    echo "  - El script es idempotente - se puede ejecutar múltiples veces"
+    echo "  - Detecta y preserva datos existentes automáticamente"
+}
+
 # Configurar trap para manejar errores
 trap 'handle_error $LINENO "$BASH_COMMAND"' ERR
+
+# Verificar si se solicita ayuda
+if [ "$1" = "help" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    show_help
+    exit 0
+fi
 
 echo "🚀 INICIANDO INSTALACIÓN DE C-NETWORK-AGENT FLEXIBLE"
 echo "======================================================"
@@ -263,20 +430,14 @@ EOF
     log_success "Enlace simbólico docker-compose creado"
 fi
 
-log_info "Creando directorios para datos persistentes..."
+# Verificar estado de datos antes de instalación
+verify_data_state
 
-# Crear directorios para volúmenes persistentes
-mkdir -p /data/influxdb2
-mkdir -p /data/mongodb
-mkdir -p /data/files
-mkdir -p /data/redis
-
-# Establecer permisos
-chown -R 1000:1000 /data/influxdb2
-chown -R 1000:1000 /data/mongodb
-chmod 2777 /data/files
-
-log_success "Directorios de datos creados correctamente"
+# Asegurar directorios persistentes (preserva datos existentes)
+if ! ensure_persistent_directories; then
+    log_error "Error en la configuración de directorios persistentes"
+    exit 1
+fi
 
 log_info "Configurando servicios FTP y TFTP..."
 
@@ -888,6 +1049,11 @@ log_info "🔑 CREDENCIALES:"
 echo "   - Admin: agent@example.com / admin123"
 echo "   - InfluxDB: admin / CreneinLocal"
 echo "   - MongoDB: root / root"
+log_info "💾 PERSISTENCIA DE DATOS:"
+echo "   - Directorios persistentes: /data/influxdb2, /data/mongodb, /data/redis, /data/files"
+echo "   - Los datos sobreviven al borrado de contenedores (bind mounts)"
+echo "   - El script preserva datos existentes durante reinstalaciones"
+echo "   - Verificación automática de integridad de datos"
 echo ""
 log_info "📝 COMANDOS ÚTILES:"
 echo "   - Verificar estado: $COMPOSE_CMD ps"

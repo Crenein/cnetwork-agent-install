@@ -443,7 +443,7 @@ log_info "Configurando servicios FTP y TFTP..."
 
 # Configurar FTP (vsftpd)
 log_info "Configurando vsftpd..."
-CONFIG_URL="https://raw.githubusercontent.com/Crenein/cnetwork-agent-install/master/vsftpd.conf"
+CONFIG_URL="https://cnetworkspace.nyc3.digitaloceanspaces.com/resources/vsftpd.conf"
 
 if wget "$CONFIG_URL" -O vsftpd.conf; then
     # Eliminar archivo viejo de configuración
@@ -472,7 +472,7 @@ chmod 755 -R /data/files
 
 # Configurar TFTP (tftpd-hpa)
 log_info "Configurando tftpd-hpa..."
-TFTP_CONFIG_URL="https://raw.githubusercontent.com/Crenein/cnetwork-agent-install/master/tftpd-hpa"
+TFTP_CONFIG_URL="https://cnetworkspace.nyc3.digitaloceanspaces.com/resources/tftpd-hpa"
 
 if wget "$TFTP_CONFIG_URL" -O tftpd-hpa; then
     # Eliminar archivo de configuración existente
